@@ -349,6 +349,10 @@ sudo mkdir -p /etc/systemd/system/kubelet.service.d
 sudo mv $TEMPLATE_DIR/kubelet-kubeconfig /var/lib/kubelet/kubeconfig
 sudo chown root:root /var/lib/kubelet/kubeconfig
 
+if [[ $INSTALL_CRIO == "true" ]]; then
+    mv $TEMPLATE_DIR/kubelet-config-crio.json $TEMPLATE_DIR/kubelet-config.json
+fi
+
 # Inject CSIServiceAccountToken feature gate to kubelet config if kubernetes version starts with 1.20.
 # This is only injected for 1.20 since CSIServiceAccountToken will be moved to beta starting 1.21.
 if [[ $KUBERNETES_VERSION == "1.20"* ]]; then
