@@ -325,6 +325,8 @@ PAUSE_CONTAINER_ACCOUNT=$(get_pause_container_account_for_region "${AWS_DEFAULT_
 PAUSE_CONTAINER_IMAGE=${PAUSE_CONTAINER_IMAGE:-$PAUSE_CONTAINER_ACCOUNT.dkr.ecr.$AWS_DEFAULT_REGION.$AWS_SERVICES_DOMAIN/eks/pause}
 PAUSE_CONTAINER="$PAUSE_CONTAINER_IMAGE:$PAUSE_CONTAINER_VERSION"
 
+AWS_REGISTRY_URL="$PAUSE_CONTAINER_ACCOUNT.dkr.ecr.$AWS_DEFAULT_REGION.$AWS_SERVICES_DOMAIN"
+
 ### kubelet kubeconfig
 
 CA_CERTIFICATE_DIRECTORY=/etc/kubernetes/pki
@@ -477,6 +479,22 @@ if [[ "$CONTAINER_RUNTIME" = "containerd" ]]; then
     systemctl restart containerd
     systemctl enable sandbox-image
     systemctl start sandbox-image
+
+elif [[ "$CONTAINER_RUNTIME" = "crio" ]]; then
+    sudo mkdir -p /etc/cni/net.d
+    sudo sed -i s,AWS_REGISTRY,$AWS_REGISTRY_URL,g /etc/eks/crio/crio.conf
+    sudo sed -i s,DEFAULT_REGION,$AWS_DEFAULT_REGION,g /etc/eks/crio/crio.conf
+    sudo sed -i s,PAUSE_CONTAINER,$PAUSE_CONTAINER,g /etc/eks/crio/crio.conf
+    sudo mv /etc/eks/crio/crio.conf /etc/crio/crio.conf
+    sudo mv /etc/eks/crio/pause-image.service /etc/systemd/system/pause-image.service
+    sudo mv /etc/eks/crio/kubelet-crio.service /etc/systemd/system/kubelet.service
+    sudo chown root:root /etc/systemd/system/kubelet.service
+    sudo ln -sf /var/run/crio/crio.sock /var/run/dockershim.sock
+    systemctl daemon-reload
+    systemctl enable crio
+    systemctl start crio
+    systemctl enable pause-image
+    systemctl start pause-image
 
 elif [[ "$CONTAINER_RUNTIME" = "dockerd" ]]; then
     mkdir -p /etc/docker
