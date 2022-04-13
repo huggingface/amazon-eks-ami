@@ -177,94 +177,6 @@ net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
 
-###############################################################################
-### CRI-O setup ###############################################################
-###############################################################################
-
-INSTALL_CRIO="${INSTALL_CRIO:-true}"
-if [[ "$INSTALL_CRIO" == "true" ]]; then
-    sudo mkdir -p /etc/eks/crio
-    if [ -f "/etc/eks/crio/crio.conf" ]; then
-        ## this means we are building a gpu ami and have already placed a crio configuration file in /etc/eks
-        echo "crio config is already present"
-    else
-        sudo mv $TEMPLATE_DIR/crio.conf /etc/eks/crio/crio.conf
-    fi
-    sudo mv $TEMPLATE_DIR/kubelet-crio.service /etc/eks/crio/kubelet-crio.service
-
-    sudo mkdir /etc/containers
-    sudo mv $TEMPLATE_DIR/containers-policy.json /etc/containers/policy.json
-
-    sudo mv $TEMPLATE_DIR/pause-image.service /etc/eks/crio/pause-image.service
-    sudo mv $TEMPLATE_DIR/pull-pause-image.sh /etc/eks/crio/pull-pause-image.sh
-    sudo chmod +x /etc/eks/crio/pull-pause-image.sh
-
-    VERSION=${KUBERNETES_VERSION%.*}
-
-    # Install crictl
-    CRICTL_VERSION="1.23.0"
-    curl -L https://github.com/kubernetes-sigs/cri-tools/releases/download/v$CRICTL_VERSION/crictl-v$CRICTL_VERSION-linux-amd64.tar.gz --output crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
-    sudo tar zxvf crictl-$CRICTL_VERSION-linux-amd64.tar.gz -C /usr/bin
-    rm -f crictl-$CRICTL_VERSION-linux-amd64.tar.gz
-
-    sudo yum install -y \
-        device-mapper-devel \
-        gcc \
-        git \
-        glib2-devel \
-        glibc-devel \
-        glibc-static \
-        gpgme-devel \
-        libassuan-devel \
-        libgpg-error-devel \
-        libseccomp-devel \
-        libselinux-devel \
-        pkgconfig \
-        make \
-        runc
-
-    wget https://go.dev/dl/go1.17.8.linux-amd64.tar.gz
-    tar -xvzf go1.17.8.linux-amd64.tar.gz
-    sudo ln -sf /home/ec2-user/go/bin/go /usr/bin/go
-
-    git clone https://github.com/cri-o/cri-o
-    cd cri-o
-    git checkout "release-$VERSION"
-
-    make
-    sudo make install
-    sudo make install.config
-    sudo make install.systemd
-
-    cd ..
-    git clone https://github.com/containers/conmon
-    cd conmon
-    make
-    sudo make install
-
-    cd ..
-    # rm -rf ./go*
-    # rm -rf ./cri-o
-    # rm -rf ./conmon
-    # sudo rm /usr/bin/go
-
-    cat <<EOF | sudo tee -a /etc/modules-load.d/crio.conf
-overlay
-br_netfilter
-EOF
-
-    sudo modprobe overlay
-    sudo modprobe br_netfilter
-
-    cat <<EOF | sudo tee -a /etc/sysctl.d/99-kubernetes-cri.conf
-net.bridge.bridge-nf-call-ip6tables = 1
-net.bridge.bridge-nf-call-iptables = 1
-net.ipv4.ip_forward = 1
-EOF
-
-    sudo sysctl --system
-
-fi
 
 ################################################################################
 ### Logrotate ##################################################################
@@ -348,10 +260,6 @@ sudo mkdir -p /etc/kubernetes/kubelet
 sudo mkdir -p /etc/systemd/system/kubelet.service.d
 sudo mv $TEMPLATE_DIR/kubelet-kubeconfig /var/lib/kubelet/kubeconfig
 sudo chown root:root /var/lib/kubelet/kubeconfig
-
-if [[ $INSTALL_CRIO == "true" ]]; then
-    mv $TEMPLATE_DIR/kubelet-config-crio.json $TEMPLATE_DIR/kubelet-config.json
-fi
 
 # Inject CSIServiceAccountToken feature gate to kubelet config if kubernetes version starts with 1.20.
 # This is only injected for 1.20 since CSIServiceAccountToken will be moved to beta starting 1.21.
